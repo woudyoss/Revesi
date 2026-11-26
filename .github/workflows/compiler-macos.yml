@@ -1,0 +1,52 @@
+name: Compiler le Carnet pour macOS
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compiler:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Installer Python et les dépendances
+        run: |
+          brew install python@3.12 python-tk@3.12
+          "$(brew --prefix python@3.12)/bin/python3.12" -m venv .venv
+          .venv/bin/python -m pip install pyinstaller pymupdf matplotlib pillow
+
+      - name: Générer le fichier app
+        run: |
+          cat > lancer.py <<'PY'
+          from pathlib import Path
+          import sys
+          from revisions import RevisionApp
+
+          bundle = next(p for p in Path(sys.executable).resolve().parents
+                        if p.suffix == ".app")
+          portable = bundle.parent / "revisions.sqlite3"
+          if portable.is_file():
+              database = portable
+          else:
+              folder = Path.home() / "Library" / "Application Support" / "CarnetDeRevision"
+              folder.mkdir(parents=True, exist_ok=True)
+              database = folder / portable.name
+
+          RevisionApp(database).mainloop()
+          PY
+
+          .venv/bin/python -m PyInstaller --onedir --windowed \
+            --name Carnet-de-revision --icon logo.png \
+            --collect-all pymupdf \
+            --hidden-import matplotlib.backends.backend_agg lancer.py
+
+          ditto -c -k --sequesterRsrc --keepParent \
+            dist/Carnet-de-revision.app Carnet-macOS.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Carnet-macOS
+          path: Carnet-macOS.zip
